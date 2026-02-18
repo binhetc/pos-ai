@@ -71,3 +71,4 @@ async def delete_category(category_id: str, db: AsyncSession = Depends(get_db)):
     if not category:
         raise HTTPException(404, "Category not found")
     await db.delete(category)
+    await db.flush()

@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.product import Product
 from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductResponse, ProductListResponse,
@@ -16,6 +17,14 @@ router = APIRouter(prefix="/api/v1/products", tags=["products"])
 
 UPLOAD_DIR = Path("uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Max upload size in bytes
+MAX_UPLOAD_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+
+def _escape_like(s: str) -> str:
+    """Escape SQL LIKE wildcards in user input."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 @router.get("", response_model=ProductListResponse)
@@ -37,7 +46,8 @@ async def list_products(
         query = query.where(Product.category_id == category_id)
         count_query = count_query.where(Product.category_id == category_id)
     if search:
-        like = f"%{search}%"
+        escaped = _escape_like(search)
+        like = f"%{escaped}%"
         filter_cond = Product.name.ilike(like) | Product.sku.ilike(like)
         query = query.where(filter_cond)
         count_query = count_query.where(filter_cond)
@@ -123,6 +133,7 @@ async def delete_product(product_id: str, db: AsyncSession = Depends(get_db)):
     if not product:
         raise HTTPException(404, "Product not found")
     await db.delete(product)
+    await db.flush()
 
 
 @router.post("/{product_id}/image", response_model=ProductResponse)
@@ -141,14 +152,27 @@ async def upload_product_image(
     if file.content_type not in allowed:
         raise HTTPException(400, f"File type not allowed. Use: {', '.join(allowed)}")
 
+    # Check Content-Length header first (if available) to reject early
+    if file.size and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(400, f"File too large. Max {settings.MAX_UPLOAD_SIZE_MB}MB")
+
+    # Read in chunks to limit memory usage
+    chunks = []
+    total_size = 0
+    while True:
+        chunk = await file.read(64 * 1024)  # 64KB chunks
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > MAX_UPLOAD_BYTES:
+            raise HTTPException(400, f"File too large. Max {settings.MAX_UPLOAD_SIZE_MB}MB")
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
     # Save file
     ext = file.filename.rsplit(".", 1)[-1] if file.filename else "jpg"
     filename = f"{product_id}_{uuid.uuid4().hex[:8]}.{ext}"
     filepath = UPLOAD_DIR / filename
-
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:  # 5MB limit
-        raise HTTPException(400, "File too large. Max 5MB")
 
     with open(filepath, "wb") as f:
         f.write(content)

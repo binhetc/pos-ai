@@ -9,3 +9,4 @@ build/
 *.apk
 *.ipa
 .DS_Store
+uploads/

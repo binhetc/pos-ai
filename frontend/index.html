@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS AI - TPPlaza</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+    .pos-container { display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+
+    /* ── Header ── */
+    .header { grid-column: 1 / -1; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;
+      padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 1.4rem; }
+    .header .search { padding: 8px 16px; border-radius: 8px; border: none; width: 320px;
+      font-size: 0.95rem; outline: none; }
+    .header .barcode-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4);
+      color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+
+    /* ── Categories ── */
+    .categories { grid-column: 1; padding: 12px 16px; display: flex; gap: 8px; flex-wrap: wrap;
+      align-content: flex-start; border-bottom: 1px solid #e0e0e0; background: #fff; }
+    .cat-btn { padding: 8px 16px; border-radius: 20px; border: 2px solid #667eea; background: #fff;
+      color: #667eea; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: all .2s; }
+    .cat-btn.active, .cat-btn:hover { background: #667eea; color: #fff; }
+
+    /* ── Product Grid ── */
+    .product-grid { grid-column: 1; padding: 16px; display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;
+      overflow-y: auto; align-content: flex-start; }
+    .product-card { background: #fff; border-radius: 12px; padding: 12px; text-align: center;
+      cursor: pointer; transition: all .2s; border: 2px solid transparent; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .product-card:hover { border-color: #667eea; transform: translateY(-2px); box-shadow: 0 4px 16px rgba(102,126,234,0.2); }
+    .product-card .emoji { font-size: 2.5rem; margin-bottom: 8px; }
+    .product-card .name { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+    .product-card .price { color: #667eea; font-weight: 700; font-size: 1rem; }
+    .product-card .stock { font-size: 0.75rem; color: #888; }
+    .product-card .stock.low { color: #e74c3c; font-weight: 600; }
+
+    /* ── Cart ── */
+    .cart { grid-column: 2; grid-row: 2 / 5; background: #fff; display: flex; flex-direction: column;
+      border-left: 1px solid #e0e0e0; }
+    .cart-header { padding: 16px; font-weight: 700; font-size: 1.1rem; border-bottom: 1px solid #eee;
+      display: flex; justify-content: space-between; align-items: center; }
+    .cart-items { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .cart-item { display: grid; grid-template-columns: 1fr auto; gap: 4px; padding: 10px 16px;
+      border-bottom: 1px solid #f5f5f5; align-items: center; }
+    .cart-item .item-name { font-weight: 600; font-size: 0.9rem; }
+    .cart-item .item-price { color: #667eea; font-weight: 600; text-align: right; }
+    .cart-item .qty-controls { display: flex; align-items: center; gap: 8px; }
+    .cart-item .qty-controls button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd;
+      background: #f9f9f9; cursor: pointer; font-weight: 700; font-size: 1rem; }
+    .cart-item .qty-controls span { min-width: 20px; text-align: center; font-weight: 600; }
+    .cart-item .remove-btn { color: #e74c3c; cursor: pointer; font-size: 0.8rem; border: none; background: none; }
+
+    /* ── Cart Footer ── */
+    .cart-footer { padding: 16px; border-top: 2px solid #eee; }
+    .cart-total { display: flex; justify-content: space-between; font-size: 1.2rem; font-weight: 700;
+      margin-bottom: 12px; }
+    .cart-total .amount { color: #667eea; }
+    .pay-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 700;
+      cursor: pointer; transition: opacity .2s; }
+    .pay-btn:hover { opacity: 0.9; }
+    .pay-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .clear-btn { width: 100%; padding: 10px; background: none; border: 1px solid #ddd;
+      border-radius: 10px; font-size: 0.9rem; cursor: pointer; margin-top: 8px; color: #888; }
+
+    .empty-cart { padding: 40px; text-align: center; color: #bbb; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class="pos-container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🛒 POS AI - TPPlaza</h1>
+      <input class="search" id="searchInput" placeholder="🔍 Tìm sản phẩm (tên, SKU)..." oninput="filterProducts()">
+      <button class="barcode-btn" onclick="scanBarcode()">📷 Quét Barcode</button>
+    </div>
+
+    <!-- Categories -->
+    <div class="categories" id="categoryBar"></div>
+
+    <!-- Product Grid -->
+    <div class="product-grid" id="productGrid"></div>
+
+    <!-- Cart -->
+    <div class="cart">
+      <div class="cart-header">
+        <span>🧾 Giỏ hàng</span>
+        <span id="cartCount">0 SP</span>
+      </div>
+      <div class="cart-items" id="cartItems"></div>
+      <div class="cart-footer">
+        <div class="cart-total">
+          <span>Tổng cộng:</span>
+          <span class="amount" id="cartTotal">0₫</span>
+        </div>
+        <button class="pay-btn" id="payBtn" disabled onclick="checkout()">💳 Thanh toán</button>
+        <button class="clear-btn" onclick="clearCart()">🗑 Xoá giỏ hàng</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ── Sample Data ──
+const categories = [
+  { id: 0, name: "Tất cả", icon: "📦" },
+  { id: 1, name: "Đồ uống", icon: "🥤" },
+  { id: 2, name: "Thức ăn", icon: "🍔" },
+  { id: 3, name: "Snack", icon: "🍿" },
+  { id: 4, name: "Gia dụng", icon: "🧹" },
+  { id: 5, name: "Điện tử", icon: "📱" },
+];
+
+const products = [
+  { id: 1, name: "Cà phê sữa đá", sku: "CF001", barcode: "8934560001", price: 29000, stock: 150, catId: 1, emoji: "☕" },
+  { id: 2, name: "Trà đào cam sả", sku: "TD001", barcode: "8934560002", price: 35000, stock: 80, catId: 1, emoji: "🍑" },
+  { id: 3, name: "Nước suối 500ml", sku: "NS001", barcode: "8934560003", price: 8000, stock: 300, catId: 1, emoji: "💧" },
+  { id: 4, name: "Coca Cola 330ml", sku: "CC001", barcode: "8934560004", price: 12000, stock: 200, catId: 1, emoji: "🥤" },
+  { id: 5, name: "Bánh mì thịt", sku: "BM001", barcode: "8934560005", price: 25000, stock: 50, catId: 2, emoji: "🥖" },
+  { id: 6, name: "Cơm gà xối mỡ", sku: "CG001", barcode: "8934560006", price: 45000, stock: 30, catId: 2, emoji: "🍗" },
+  { id: 7, name: "Phở bò tái", sku: "PB001", barcode: "8934560007", price: 55000, stock: 25, catId: 2, emoji: "🍜" },
+  { id: 8, name: "Mì xào hải sản", sku: "MX001", barcode: "8934560008", price: 50000, stock: 20, catId: 2, emoji: "🍝" },
+  { id: 9, name: "Bắp rang bơ", sku: "BR001", barcode: "8934560009", price: 20000, stock: 100, catId: 3, emoji: "🍿" },
+  { id: 10, name: "Khoai tây chiên", sku: "KT001", barcode: "8934560010", price: 18000, stock: 120, catId: 3, emoji: "🍟" },
+  { id: 11, name: "Snack Oishi", sku: "OS001", barcode: "8934560011", price: 10000, stock: 5, catId: 3, emoji: "🥨" },
+  { id: 12, name: "Khăn giấy Pulppy", sku: "KG001", barcode: "8934560012", price: 32000, stock: 60, catId: 4, emoji: "🧻" },
+  { id: 13, name: "Nước rửa tay", sku: "NR001", barcode: "8934560013", price: 45000, stock: 40, catId: 4, emoji: "🧴" },
+  { id: 14, name: "Sạc dự phòng", sku: "SD001", barcode: "8934560014", price: 250000, stock: 15, catId: 5, emoji: "🔋" },
+  { id: 15, name: "Tai nghe Bluetooth", sku: "TN001", barcode: "8934560015", price: 180000, stock: 8, catId: 5, emoji: "🎧" },
+  { id: 16, name: "Trà sữa trân châu", sku: "TS001", barcode: "8934560016", price: 39000, stock: 60, catId: 1, emoji: "🧋" },
+];
+
+let cart = [];
+let activeCategory = 0;
+
+// ── Render ──
+function renderCategories() {
+  const bar = document.getElementById("categoryBar");
+  bar.innerHTML = categories.map(c =>
+    `<button class="cat-btn ${c.id === activeCategory ? 'active' : ''}"
+      onclick="setCategory(${c.id})">${c.icon} ${c.name}</button>`
+  ).join("");
+}
+
+function renderProducts() {
+  const grid = document.getElementById("productGrid");
+  const search = document.getElementById("searchInput").value.toLowerCase();
+  let filtered = products;
+  if (activeCategory !== 0) filtered = filtered.filter(p => p.catId === activeCategory);
+  if (search) filtered = filtered.filter(p =>
+    p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search));
+
+  grid.innerHTML = filtered.map(p => `
+    <div class="product-card" onclick="addToCart(${p.id})">
+      <div class="emoji">${p.emoji}</div>
+      <div class="name">${p.name}</div>
+      <div class="price">${formatVND(p.price)}</div>
+      <div class="stock ${p.stock <= 10 ? 'low' : ''}">Kho: ${p.stock} ${p.stock <= 10 ? '⚠️' : ''}</div>
+    </div>
+  `).join("");
+}
+
+function renderCart() {
+  const container = document.getElementById("cartItems");
+  if (cart.length === 0) {
+    container.innerHTML = '<div class="empty-cart">Giỏ hàng trống<br>Chọn sản phẩm để bắt đầu</div>';
+  } else {
+    container.innerHTML = cart.map((item, i) => `
+      <div class="cart-item">
+        <div>
+          <div class="item-name">${item.emoji} ${item.name}</div>
+          <div class="qty-controls">
+            <button onclick="changeQty(${i}, -1)">−</button>
+            <span>${item.qty}</span>
+            <button onclick="changeQty(${i}, 1)">+</button>
+            <button class="remove-btn" onclick="removeItem(${i})">✕</button>
+          </div>
+        </div>
+        <div class="item-price">${formatVND(item.price * item.qty)}</div>
+      </div>
+    `).join("");
+  }
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const count = cart.reduce((s, i) => s + i.qty, 0);
+  document.getElementById("cartTotal").textContent = formatVND(total);
+  document.getElementById("cartCount").textContent = `${count} SP`;
+  document.getElementById("payBtn").disabled = cart.length === 0;
+}
+
+// ── Actions ──
+function setCategory(id) { activeCategory = id; renderCategories(); renderProducts(); }
+function filterProducts() { renderProducts(); }
+
+function addToCart(productId) {
+  const p = products.find(x => x.id === productId);
+  const existing = cart.find(x => x.id === productId);
+  if (existing) { existing.qty++; } else { cart.push({ ...p, qty: 1 }); }
+  renderCart();
+}
+
+function changeQty(index, delta) {
+  cart[index].qty += delta;
+  if (cart[index].qty <= 0) cart.splice(index, 1);
+  renderCart();
+}
+
+function removeItem(index) { cart.splice(index, 1); renderCart(); }
+function clearCart() { cart = []; renderCart(); }
+
+function checkout() {
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  alert(`✅ Thanh toán thành công!\nTổng: ${formatVND(total)}\nSố SP: ${cart.reduce((s,i) => s + i.qty, 0)}`);
+  cart = [];
+  renderCart();
+}
+
+function scanBarcode() {
+  const code = prompt("Nhập mã barcode:");
+  if (!code) return;
+  const p = products.find(x => x.barcode === code);
+  if (p) { addToCart(p.id); } else { alert("❌ Không tìm thấy sản phẩm với barcode: " + code); }
+}
+
+function formatVND(n) { return new Intl.NumberFormat("vi-VN").format(n) + "₫"; }
+
+// ── Init ──
+renderCategories();
+renderProducts();
+renderCart();
+</script>
+</body>
+</html>

@@ -59,11 +59,36 @@ npm install
 npx react-native start
 ```
 
-## Sprint 1 (Deadline: 17/03/2026)
+## Sprint 1 (Hoàn thành: 19/02/2026) ✅
 
-- [x] Setup repo + CI/CD
+- [x] Setup repo + CI/CD (#1)
 - [x] Tech stack documentation
-- [ ] Database schema design
-- [ ] Authentication system (RBAC)
-- [ ] POS UI prototype
-- [ ] Product catalog CRUD
+- [x] Database schema design (#2)
+- [x] Authentication system (RBAC) (#3)
+- [x] POS UI prototype (#10)
+- [x] Product catalog CRUD (#9)
+- [x] Code review fixes (#8)
+- [x] Order Management API
+
+## Sprint 2 (Deadline: 15/04/2026)
+
+### Core Features
+- [ ] Customer Management API & UI
+- [ ] Reporting & Analytics (daily sales, inventory turnover)
+- [ ] Receipt printing integration
+- [ ] Barcode scanner integration (USB/Bluetooth)
+- [ ] Payment terminal integration
+- [ ] Multi-store support
+
+### AI Features (Phase 1)
+- [ ] Product recognition via camera (Computer Vision)
+  - OpenCV + TensorFlow Lite model
+  - Real-time barcode scanning fallback
+- [ ] Basic recommendation engine
+  - Frequently bought together
+  - Category-based suggestions
+
+### DevOps
+- [ ] Docker deployment setup
+- [ ] AWS infrastructure (ECS + RDS + ElastiCache)
+- [ ] Production monitoring & logging

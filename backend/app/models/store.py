@@ -14,6 +14,7 @@ class Store(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     address: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(String(20))
+    tax_id: Mapped[str | None] = mapped_column(String(50), comment="Mã số thuế")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # Relationships

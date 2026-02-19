@@ -10,6 +10,7 @@ RBAC Matrix:
 │ product:delete      │  ✓    │         │         │
 │ order:create        │  ✓    │   ✓     │   ✓     │
 │ order:read          │  ✓    │   ✓     │   ✓     │
+│ order:update        │  ✓    │   ✓     │         │
 │ order:void          │  ✓    │   ✓     │         │
 │ order:refund        │  ✓    │   ✓     │         │
 │ inventory:read      │  ✓    │   ✓     │   ✓     │
@@ -41,6 +42,7 @@ ROLE_PERMISSIONS: dict[RoleType, list[PermissionAction]] = {
         PermissionAction.PRODUCT_UPDATE,
         PermissionAction.ORDER_CREATE,
         PermissionAction.ORDER_READ,
+        PermissionAction.ORDER_UPDATE,
         PermissionAction.ORDER_VOID,
         PermissionAction.ORDER_REFUND,
         PermissionAction.INVENTORY_READ,

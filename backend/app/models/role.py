@@ -20,6 +20,7 @@ class PermissionAction(str, enum.Enum):
     # Orders
     ORDER_CREATE = "order:create"
     ORDER_READ = "order:read"
+    ORDER_UPDATE = "order:update"
     ORDER_VOID = "order:void"
     ORDER_REFUND = "order:refund"
     # Inventory

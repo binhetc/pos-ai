@@ -7,8 +7,8 @@ class ProductCreate(BaseModel):
     description: str | None = None
     sku: str = Field(..., min_length=1, max_length=50)
     barcode: str | None = Field(None, max_length=50)
-    price: float = Field(..., gt=0)
-    cost_price: float | None = Field(None, ge=0)
+    price: float = Field(..., gt=0, le=999_999_999)
+    cost_price: float | None = Field(None, ge=0, le=999_999_999)
     unit: str = Field("cái", max_length=20)
     category_id: str | None = None
     in_stock: int = Field(0, ge=0)
@@ -20,8 +20,8 @@ class ProductUpdate(BaseModel):
     description: str | None = None
     sku: str | None = Field(None, min_length=1, max_length=50)
     barcode: str | None = Field(None, max_length=50)
-    price: float | None = Field(None, gt=0)
-    cost_price: float | None = Field(None, ge=0)
+    price: float | None = Field(None, gt=0, le=999_999_999)
+    cost_price: float | None = Field(None, ge=0, le=999_999_999)
     unit: str | None = Field(None, max_length=20)
     category_id: str | None = None
     is_active: bool | None = None

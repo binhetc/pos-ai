@@ -36,10 +36,9 @@ export const POSScreen: React.FC = () => {
     categoriesApi.list().then(setCategories).catch(console.error);
   }, []);
 
-  // Load products
+  // Load products - removed `loading` from deps to prevent infinite loop
   const loadProducts = useCallback(
     async (pageNum = 1, append = false) => {
-      if (loading) return;
       setLoading(true);
       try {
         const res = await productsApi.list({
@@ -62,17 +61,20 @@ export const POSScreen: React.FC = () => {
         setLoading(false);
       }
     },
-    [selectedCategory, searchText, loading],
+    [selectedCategory, searchText],
   );
 
   // Reload when filters change
   useEffect(() => {
     loadProducts(1, false);
-  }, [selectedCategory, searchText]);
+  }, [loadProducts]);
 
-  // Pagination
+  // Pagination - use ref to prevent race condition with loading state
+  const loadingRef = React.useRef(false);
+  React.useEffect(() => { loadingRef.current = loading; }, [loading]);
+
   const loadMore = () => {
-    if (hasMore && !loading) {
+    if (hasMore && !loadingRef.current) {
       loadProducts(page + 1, true);
     }
   };

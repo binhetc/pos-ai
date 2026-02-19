@@ -24,8 +24,11 @@ class PermissionAction(str, enum.Enum):
     ORDER_VOID = "order:void"
     ORDER_REFUND = "order:refund"
     # Inventory
+    INVENTORY_CREATE = "inventory:create"
     INVENTORY_READ = "inventory:read"
+    INVENTORY_UPDATE = "inventory:update"
     INVENTORY_ADJUST = "inventory:adjust"
+    INVENTORY_DELETE = "inventory:delete"
     # Reports
     REPORT_SALES = "report:sales"
     REPORT_INVENTORY = "report:inventory"

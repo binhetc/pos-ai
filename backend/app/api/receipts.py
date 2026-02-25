@@ -5,10 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_user
 from app.db.base import get_db
-from app.models.order import Order, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus
 from app.models.store import Store
 from app.schemas.auth import CurrentUser
 from app.services.receipt import (
@@ -30,34 +31,41 @@ async def get_receipt_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Get receipt data for an order."""
-    # Fetch order with relationships
+    # Fetch order with ALL required relationships eagerly loaded.
+    # Must use selectinload to avoid MissingGreenlet / DetachedInstanceError
+    # in async SQLAlchemy — lazy loading is NOT safe outside the session context.
     result = await db.execute(
-        select(Order).where(
+        select(Order)
+        .options(
+            selectinload(Order.customer),
+            selectinload(Order.items).selectinload(OrderItem.product),
+        )
+        .where(
             Order.id == order_id,
             Order.store_id == current_user.store_id,
         )
     )
     order = result.scalar_one_or_none()
-    
+
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found",
         )
-    
+
     if order.status not in [OrderStatus.COMPLETED, OrderStatus.PENDING]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot print receipt for order with status: {order.status}",
         )
-    
+
     # Fetch store info
     store_result = await db.execute(
         select(Store).where(Store.id == current_user.store_id)
     )
     store = store_result.scalar_one()
-    
-    # Build receipt data
+
+    # Build receipt data — all relationships already loaded, no lazy access
     receipt_data = ReceiptData(
         store_name=store.name,
         store_address=store.address,
@@ -85,7 +93,7 @@ async def get_receipt_data(
         payment_method=order.payment_method.value if order.payment_method else "N/A",
         note=order.note,
     )
-    
+
     return receipt_data
 
 
@@ -124,7 +132,7 @@ async def get_receipt_escpos(
     """
     receipt_data = await get_receipt_data(order_id, current_user, db)
     escpos_bytes = generate_esc_pos_commands(receipt_data)
-    
+
     return Response(
         content=escpos_bytes,
         media_type="application/octet-stream",

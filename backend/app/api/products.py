@@ -26,17 +26,28 @@ async def list_products(
     size: int = Query(50, ge=1, le=100),
     search: str | None = None,
     category_id: UUID | None = None,
+    barcode: str | None = Query(None, description="Filter by exact barcode. Returns at most 1 matching product."),
+    sku: str | None = Query(None, description="Filter by exact SKU. Returns at most 1 matching product."),
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List products with pagination and optional search/filter."""
+    """List products with pagination and optional search/filter.
+
+    Use ``barcode`` or ``sku`` for exact-match barcode-scanner lookups.
+    Use ``search`` for fuzzy name/SKU/barcode search.
+    """
     offset = (page - 1) * size
 
     # Base query - filter by store
     query = select(Product).where(Product.store_id == current_user.store_id)
 
-    # Apply filters
-    if search:
+    # Exact-match filters (barcode scanner use-case)
+    if barcode:
+        query = query.where(Product.barcode == barcode)
+    elif sku:
+        query = query.where(Product.sku == sku)
+    elif search:
+        # Apply filters
         query = query.where(
             (Product.name.ilike(f"%{search}%"))
             | (Product.sku.ilike(f"%{search}%"))

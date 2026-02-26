@@ -106,9 +106,14 @@ class ApiService {
     size?: number;
     search?: string;
     category_id?: string;
+    barcode?: string;
+    sku?: string;
   }) {
+    const filtered = Object.fromEntries(
+      Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null)
+    );
     const query = new URLSearchParams(
-      params as Record<string, string>
+      filtered as Record<string, string>
     ).toString();
     return this.request<{
       items: any[];
@@ -116,6 +121,30 @@ class ApiService {
       page: number;
       size: number;
     }>(`/products${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Lookup a product by exact barcode string (for barcode scanner use-case).
+   * Returns the first matching product or null if not found.
+   */
+  async getProductByBarcode(barcode: string): Promise<any | null> {
+    const result = await this.request<{
+      items: any[];
+      total: number;
+    }>(`/products?barcode=${encodeURIComponent(barcode)}&size=1`);
+    return result.items.length > 0 ? result.items[0] : null;
+  }
+
+  /**
+   * Lookup a product by exact SKU string.
+   * Returns the first matching product or null if not found.
+   */
+  async getProductBySku(sku: string): Promise<any | null> {
+    const result = await this.request<{
+      items: any[];
+      total: number;
+    }>(`/products?sku=${encodeURIComponent(sku)}&size=1`);
+    return result.items.length > 0 ? result.items[0] : null;
   }
 
   async getProduct(id: string) {

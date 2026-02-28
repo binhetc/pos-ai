@@ -1,3 +1,4 @@
+import uuid
 """Payment & Transaction models."""
 
 import enum

@@ -72,3 +72,19 @@ class PaymentWebhookData(BaseModel):
     status: str
     amount: Decimal
     raw_data: dict
+
+
+class VNPayCreateResponse(BaseModel):
+    """Response after initiating a VNPay payment."""
+    payment_id: UUID
+    payment_url: str
+    txn_ref: str
+
+
+class MoMoCreateResponse(BaseModel):
+    """Response after initiating a MoMo payment."""
+    payment_id: UUID
+    pay_url: str
+    deeplink: str | None = None
+    qr_code_url: str | None = None
+    request_id: str

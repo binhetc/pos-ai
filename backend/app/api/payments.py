@@ -1,12 +1,16 @@
 """Payment endpoints: CRUD + VNPay & MoMo webhook handlers."""
 
+import datetime
 import hashlib
 import hmac
+import json
 import logging
 import urllib.parse
+import uuid as _uuid_module
 from decimal import Decimal
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,11 +22,13 @@ from app.models.order import Order, OrderStatus
 from app.models.payment import Payment, PaymentGateway, PaymentStatus
 from app.schemas.auth import CurrentUser
 from app.schemas.payment import (
+    MoMoCreateResponse,
     MoMoPaymentRequest,
     PaymentCreate,
     PaymentListResponse,
     PaymentResponse,
     PaymentUpdate,
+    VNPayCreateResponse,
     VNPayPaymentRequest,
 )
 
@@ -101,7 +107,7 @@ async def _finalize_payment(
     if new_status == PaymentStatus.COMPLETED:
         order: Order | None = await db.get(Order, payment.order_id)
         if order and order.status == OrderStatus.PENDING:
-            order.status = OrderStatus.CONFIRMED
+            order.status = OrderStatus.COMPLETED
 
     await db.commit()
 
@@ -340,3 +346,189 @@ async def momo_webhook(
 ):
     """MoMo webhook – alias for IPN endpoint."""
     return await momo_ipn(request=request, db=db)
+
+
+# ---------------------------------------------------------------------------
+# VNPay – create payment URL
+# ---------------------------------------------------------------------------
+
+
+def _build_vnpay_signature(params: dict, secret_key: str) -> str:
+    """Build HMAC-SHA512 signature for VNPay payment creation."""
+    sorted_params = sorted(params.items())
+    hash_data = "&".join(
+        f"{k}={urllib.parse.quote_plus(str(v))}" for k, v in sorted_params
+    )
+    return hmac.new(
+        secret_key.encode("utf-8"), hash_data.encode("utf-8"), hashlib.sha512
+    ).hexdigest()
+
+
+@router.post("/vnpay/create", response_model=VNPayCreateResponse)
+async def create_vnpay_payment(
+    payload: VNPayPaymentRequest,
+    current_user: CurrentUser = Depends(require_permission("payments:create")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Build a VNPay payment URL and persist a PENDING Payment record.
+
+    Returns a redirect URL that the frontend uses to send the customer to VNPay.
+    """
+    order = await db.get(Order, payload.order_id)
+    if not order or order.store_id != current_user.store_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    txn_ref = _uuid_module.uuid4().hex[:16].upper()  # short unique ref
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+    amount_vnd = int(payload.amount * 100)  # VNPay requires no decimals × 100
+
+    params: dict = {
+        "vnp_Version": "2.1.0",
+        "vnp_Command": "pay",
+        "vnp_TmnCode": getattr(settings, "VNPAY_TMN_CODE", ""),
+        "vnp_Amount": str(amount_vnd),
+        "vnp_CreateDate": now,
+        "vnp_CurrCode": "VND",
+        "vnp_IpAddr": "127.0.0.1",
+        "vnp_Locale": "vn",
+        "vnp_OrderInfo": payload.order_info,
+        "vnp_OrderType": "other",
+        "vnp_TxnRef": txn_ref,
+    }
+    if payload.return_url:
+        params["vnp_ReturnUrl"] = payload.return_url
+    if payload.ipn_url:
+        params["vnp_IpnUrl"] = payload.ipn_url
+
+    secret_key: str = getattr(settings, "VNPAY_HASH_SECRET", "")
+    sig = _build_vnpay_signature(dict(params), secret_key)
+    params["vnp_SecureHash"] = sig
+
+    base_url: str = getattr(settings, "VNPAY_PAYMENT_URL", "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html")
+    payment_url = base_url + "?" + urllib.parse.urlencode(params)
+
+    # Persist PENDING payment
+    payment = Payment(
+        amount=payload.amount,
+        gateway=PaymentGateway.VNPAY,
+        note=payload.order_info,
+        reference=txn_ref,
+        order_id=payload.order_id,
+        store_id=current_user.store_id,
+        processed_by=current_user.id,
+        status=PaymentStatus.PENDING,
+    )
+    db.add(payment)
+    await db.commit()
+    await db.refresh(payment)
+
+    logger.info("VNPay payment created: payment=%s txn_ref=%s", payment.id, txn_ref)
+    return VNPayCreateResponse(payment_id=payment.id, payment_url=payment_url, txn_ref=txn_ref)
+
+
+# ---------------------------------------------------------------------------
+# MoMo – create payment (deeplink / QR)
+# ---------------------------------------------------------------------------
+
+
+def _build_momo_request_signature(data: dict, secret_key: str) -> str:
+    """Build HMAC-SHA256 signature for MoMo payment creation request."""
+    raw = (
+        f"accessKey={data['accessKey']}"
+        f"&amount={data['amount']}"
+        f"&extraData={data['extraData']}"
+        f"&ipnUrl={data['ipnUrl']}"
+        f"&orderId={data['orderId']}"
+        f"&orderInfo={data['orderInfo']}"
+        f"&partnerCode={data['partnerCode']}"
+        f"&redirectUrl={data['redirectUrl']}"
+        f"&requestId={data['requestId']}"
+        f"&requestType={data['requestType']}"
+    )
+    return hmac.new(
+        secret_key.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+
+@router.post("/momo/create", response_model=MoMoCreateResponse)
+async def create_momo_payment(
+    payload: MoMoPaymentRequest,
+    current_user: CurrentUser = Depends(require_permission("payments:create")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Call MoMo API to create a payment and return deeplink/QR URL.
+
+    MoMo docs: https://developers.momo.vn/v3/docs/payment/api/payment-api/create-payment
+    """
+    order = await db.get(Order, payload.order_id)
+    if not order or order.store_id != current_user.store_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    order_id_str = _uuid_module.uuid4().hex[:16].upper()
+    request_id = _uuid_module.uuid4().hex
+
+    partner_code: str = getattr(settings, "MOMO_PARTNER_CODE", "")
+    access_key: str = getattr(settings, "MOMO_ACCESS_KEY", "")
+    secret_key: str = getattr(settings, "MOMO_SECRET_KEY", "")
+    endpoint: str = getattr(settings, "MOMO_ENDPOINT", "https://test-payment.momo.vn/v2/gateway/api/create")
+
+    redirect_url = payload.redirect_url or ""
+    ipn_url = payload.ipn_url or ""
+
+    body: dict = {
+        "partnerCode": partner_code,
+        "accessKey": access_key,
+        "requestId": request_id,
+        "amount": int(payload.amount),
+        "orderId": order_id_str,
+        "orderInfo": payload.order_info,
+        "redirectUrl": redirect_url,
+        "ipnUrl": ipn_url,
+        "extraData": "",
+        "requestType": "captureWallet",
+    }
+    body["signature"] = _build_momo_request_signature(body, secret_key)
+
+    # Call MoMo API
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(endpoint, json=body, headers={"Content-Type": "application/json"})
+            resp.raise_for_status()
+            momo_resp = resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.error("MoMo API error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="MoMo API error")
+    except httpx.RequestError as exc:
+        logger.error("MoMo connection error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Cannot reach MoMo API")
+
+    result_code = momo_resp.get("resultCode", -1)
+    if result_code != 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"MoMo rejected: {momo_resp.get('message', 'Unknown error')}",
+        )
+
+    # Persist PENDING payment
+    payment = Payment(
+        amount=payload.amount,
+        gateway=PaymentGateway.MOMO,
+        note=payload.order_info,
+        reference=order_id_str,
+        order_id=payload.order_id,
+        store_id=current_user.store_id,
+        processed_by=current_user.id,
+        status=PaymentStatus.PENDING,
+    )
+    db.add(payment)
+    await db.commit()
+    await db.refresh(payment)
+
+    logger.info("MoMo payment created: payment=%s order_ref=%s", payment.id, order_id_str)
+    return MoMoCreateResponse(
+        payment_id=payment.id,
+        pay_url=momo_resp.get("payUrl", ""),
+        deeplink=momo_resp.get("deeplink"),
+        qr_code_url=momo_resp.get("qrCodeUrl"),
+        request_id=request_id,
+    )

@@ -1,3 +1,4 @@
+import uuid
 """Role & Permission models - RBAC system."""
 
 import enum

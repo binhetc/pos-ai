@@ -150,7 +150,7 @@ async def test_finalize_payment_completed_updates_order():
 
     assert payment.status == PaymentStatus.COMPLETED
     assert payment.transaction_id == "TXN999"
-    assert order.status == OrderStatus.CONFIRMED
+    assert order.status == OrderStatus.COMPLETED
     mock_db.commit.assert_awaited_once()
 
 

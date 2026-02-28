@@ -1,3 +1,4 @@
+import uuid
 """Product model."""
 
 from decimal import Decimal

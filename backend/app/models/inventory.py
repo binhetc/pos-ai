@@ -1,3 +1,4 @@
+import uuid
 """Inventory model."""
 
 from sqlalchemy import Integer, ForeignKey, UniqueConstraint

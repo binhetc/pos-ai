@@ -1,3 +1,4 @@
+import uuid
 """Category model - supports hierarchical categories."""
 
 from sqlalchemy import String, ForeignKey, Integer

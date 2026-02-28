@@ -1,3 +1,4 @@
+import uuid
 """Order & OrderItem models."""
 
 import enum

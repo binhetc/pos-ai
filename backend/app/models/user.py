@@ -1,3 +1,4 @@
+import uuid
 """User model."""
 
 from sqlalchemy import String, Boolean, ForeignKey

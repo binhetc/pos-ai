@@ -1,3 +1,4 @@
+import uuid
 """Store model."""
 
 from sqlalchemy import String, Boolean, Text
